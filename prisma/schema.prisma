@@ -1,0 +1,68 @@
+// Prisma schema for the transaction ledger.
+//
+// Money is stored as BigInt in integer minor currency units (e.g. 1050 == 10.50).
+// CHECK constraints (amount > 0, balance >= 0, distinct transfer accounts, non-blank
+// name) are added in the SQL migration because Prisma schema syntax cannot express
+// them. The migration is the source of truth for those constraints.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  credit
+  debit
+}
+
+model Account {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String
+  balance      BigInt        @default(0)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  transactions Transaction[]
+  transfersOut Transfer[]    @relation("TransferSource")
+  transfersIn  Transfer[]    @relation("TransferDestination")
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id          String          @id @default(uuid()) @db.Uuid
+  accountId   String          @map("account_id") @db.Uuid
+  type        TransactionType
+  amount      BigInt
+  description String?
+  referenceId String          @map("reference_id")
+  transferId  String?         @map("transfer_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  account  Account   @relation(fields: [accountId], references: [id])
+  transfer Transfer? @relation(fields: [transferId], references: [id])
+
+  // reference_id is unique per account, not globally.
+  @@unique([accountId, referenceId])
+  // Serves the newest-first history query with a deterministic id tiebreak.
+  @@index([accountId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("transactions")
+}
+
+model Transfer {
+  id                   String   @id @default(uuid()) @db.Uuid
+  sourceAccountId      String   @map("source_account_id") @db.Uuid
+  destinationAccountId String   @map("destination_account_id") @db.Uuid
+  amount               BigInt
+  description          String?
+  referenceId          String   @unique @map("reference_id")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  source      Account       @relation("TransferSource", fields: [sourceAccountId], references: [id])
+  destination Account       @relation("TransferDestination", fields: [destinationAccountId], references: [id])
+  entries     Transaction[]
+
+  @@map("transfers")
+}
