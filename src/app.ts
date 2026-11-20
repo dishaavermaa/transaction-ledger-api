@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { loadEnv } from './config/env.js';
@@ -24,6 +25,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   // passthrough compiler stops Fastify from also validating (and from rejecting
   // the OpenAPI-only `example` keyword under AJV strict mode).
   app.setValidatorCompiler(() => () => true);
+
+  // Allow the browser frontend to call the API. `*` allows any origin; otherwise
+  // a comma-separated allowlist. This adds CORS headers only and does not change
+  // any route's behaviour, status codes, or response shapes.
+  const corsOrigin =
+    env.CORS_ORIGIN === '*'
+      ? true
+      : env.CORS_ORIGIN.split(',')
+          .map((o) => o.trim())
+          .filter(Boolean);
+  await app.register(cors, { origin: corsOrigin });
 
   await app.register(swagger, {
     openapi: {

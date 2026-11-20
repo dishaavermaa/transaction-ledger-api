@@ -9,6 +9,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   MAX_PAGE_SIZE: z.coerce.number().int().positive().max(1000).default(100),
+  // Browser origin(s) allowed to call the API. Comma-separated list, or `*` to
+  // allow any origin. The React frontend runs on Vite's default port in dev.
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
 });
 
 export type Env = z.infer<typeof envSchema>;

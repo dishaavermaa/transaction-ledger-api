@@ -1,6 +1,6 @@
 # Assumptions and decisions
 
-Where the assignment left something open, here's what I decided and why.
+Where the spec left something open, here's what I decided and why.
 
 ## Money
 
@@ -46,8 +46,8 @@ The status codes:
 - `500` — something unexpected, with nothing internal leaked
 
 Two of those are worth calling out. Insufficient balance is a `409`, not a `422` — the
-request is fine, it just conflicts with the account's current state, and the assignment
-lists it under conflicts. And a duplicate `reference_id` is a `409` too: the assignment asks
+request is fine, it just conflicts with the account's current state, and the spec
+lists it under conflicts. And a duplicate `reference_id` is a `409` too: the spec asks
 for "a clear conflict response" with no new transaction and no balance change, and a 409
 with a stable code does that. I could have made it fully idempotent — store and replay the
 original response — but that wasn't required and it adds moving parts, so I left it.
@@ -95,6 +95,6 @@ section walks through how that plays out for debits and for transfers.
 
 ## Out of scope
 
-No authentication or authorization — deliberately, per the assignment, though it's the
+No authentication or authorization — a deliberate scope choice, though it's the
 first thing you'd put in front of this for real. No soft deletes, no closing an account, no
 multiple currencies, and no rounding rules.
