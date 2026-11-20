@@ -11,6 +11,10 @@ Money is stored as integers in minor units, so `5000` means 50.00. No floating p
 touches a balance. The reasoning and the other judgement calls are in
 [ASSUMPTIONS.md](./ASSUMPTIONS.md).
 
+There's also a small React web app in [`web/`](./web) for doing all of this in a browser,
+and a test suite that exercises the behaviour and the concurrency guarantees against a real
+database — both covered below.
+
 ## Endpoints
 
 - `POST /accounts` — create an account; the balance always starts at 0
@@ -22,7 +26,7 @@ touches a balance. The reasoning and the other judgement calls are in
 
 Swagger UI lives at `/docs` once the server is running.
 
-## Running it
+## Running the API
 
 You'll need Node 20+ and Docker.
 
@@ -56,6 +60,28 @@ The `5544` port is deliberate: I kept running into a local Postgres already sitt
 5432, so the container maps to 5544 to stay out of its way. If you don't have that
 conflict, you can change it back in `docker-compose.yml` and `.env`.
 
+## The web app
+
+There's a React frontend in [`web/`](./web) that does everything above in a browser instead
+of with curl: create accounts, post credits and debits, page through history with a type
+filter, and move money between accounts. It's Vite + React + TypeScript, with TanStack Query
+for the data fetching and Tailwind for styling.
+
+It talks to the API, so start the API first (above), then in a second terminal:
+
+```bash
+cd web
+npm install
+cp .env.example .env      # points at http://localhost:3000 by default
+npm run dev
+```
+
+That serves the app on http://localhost:5173, which the API already allows via CORS (the
+`CORS_ORIGIN` variable in the API's `.env`). `npm run build` produces a static bundle.
+
+Money stays in integer minor units through the frontend too — what you type in rupees is
+parsed to paise by string, never floating point, and only formatted back to ₹ for display.
+
 ## How it's laid out
 
 Routes stay thin — they validate the request with Zod, call a service, and serialize the
@@ -71,6 +97,8 @@ src/
     transfers/         atomic transfer
   shared/              errors, db client, pagination, serialization
 prisma/                schema and the SQL migration
+tests/                 functional + concurrency tests (run against real Postgres)
+web/                   React frontend (Vite + TypeScript)
 ```
 
 The account's `balance` is a running total, not something recomputed from the ledger on
@@ -102,6 +130,38 @@ locks in the same order, two transfers going opposite ways between the same pair
 accounts can't end up waiting on each other, so they don't deadlock. A transfer is one
 `transfers` row plus the two ledger entries (the debit and the credit) linked back to it,
 and the transfer's `reference_id` is unique, so retrying one can't move the money twice.
+
+## Testing
+
+The tests run against a real Postgres rather than mocks, because the behaviour worth testing
+here *is* the database behaviour. A global setup creates a separate `ledger_test` database
+and runs the migrations, each test starts from truncated tables, and the app is driven over
+real HTTP on an ephemeral port so concurrent requests actually run concurrently.
+
+Bring up Postgres (the same container as above) and run:
+
+```bash
+npm test
+```
+
+The functional tests cover account creation, credits and debits, balances, history ordering
+and the type filter, pagination edges, transfers, and every error path — asserting the exact
+error-envelope shape each time. The concurrency tests are the ones that back up the section
+above:
+
+| Scenario | What it proves |
+| --- | --- |
+| 100 parallel debits of 200 against a balance of 10,000 | exactly 50 succeed, 50 come back `409`, the balance lands on 0 and never goes negative |
+| 50 credits and 50 debits fired at once | the final balance matches both the arithmetic and the ledger sum |
+| 50 transfers A→B and 50 B→A at the same time | all succeed, none deadlock, and the total across the two accounts is conserved |
+| the same `reference_id` sent 20× in parallel | it applies exactly once; the other 19 come back `409` |
+
+After each of these, the test re-derives every balance from the raw ledger rows and checks
+it still equals the stored balance — the invariant the whole design rests on.
+
+The frontend has its own tests under `web/` (`cd web && npm test`): the rupee-to-paise
+conversion — including the classic `0.1 + 0.2` case and rejecting more than two decimals —
+form validation, and that an API error actually renders in the UI.
 
 ## Errors
 
